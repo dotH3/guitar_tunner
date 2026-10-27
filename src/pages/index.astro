@@ -1,0 +1,492 @@
+---
+import { STANDARD_TUNING } from '../lib/tuning.ts';
+
+// Geometría del medidor: −50…+50 cents en un arco de ±60°.
+const CX = 150;
+const CY = 165;
+const R = 130;
+const DEG_PER_CENT = 60 / 50;
+
+function polar(cents: number, r: number) {
+  const a = ((cents * DEG_PER_CENT - 90) * Math.PI) / 180;
+  return { x: CX + r * Math.cos(a), y: CY + r * Math.sin(a) };
+}
+
+function arc(fromCents: number, toCents: number, r: number) {
+  const a = polar(fromCents, r);
+  const b = polar(toCents, r);
+  return `M ${a.x.toFixed(2)} ${a.y.toFixed(2)} A ${r} ${r} 0 0 1 ${b.x.toFixed(2)} ${b.y.toFixed(2)}`;
+}
+
+const ticks = Array.from({ length: 21 }, (_, i) => {
+  const c = -50 + i * 5;
+  const major = c % 25 === 0;
+  const p1 = polar(c, R - (major ? 18 : 10));
+  const p2 = polar(c, R);
+  return { c, major, p1, p2 };
+});
+
+const labels = [-50, -25, 0, 25, 50].map((c) => ({ c, ...polar(c, R + 16) }));
+const strings = [...STANDARD_TUNING];
+---
+
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f1115" />
+    <meta name="description" content="Afinador de guitarra: afinación estándar con aguja de cents y tono de referencia." />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <title>Afinador</title>
+  </head>
+  <body>
+    <main class="app" data-state="idle">
+      <header class="top">
+        <h1>Afinador</h1>
+        <span class="tuning">Estándar · A4 = 440 Hz</span>
+      </header>
+
+      <section class="display" aria-live="polite">
+        <div class="note-wrap">
+          <span class="note" id="note">–</span><sub class="octave" id="octave"></sub>
+        </div>
+        <p class="status" id="status">Toca una cuerda</p>
+
+        <svg class="gauge" viewBox="0 0 300 185" role="img" aria-label="Medidor de afinación">
+          <path class="arc-bg" d={arc(-50, 50, R)} />
+          <path class="arc-ok" d={arc(-5, 5, R)} />
+          {ticks.map((t) => (
+            <line
+              class:list={['tick', { major: t.major }]}
+              x1={t.p1.x.toFixed(2)}
+              y1={t.p1.y.toFixed(2)}
+              x2={t.p2.x.toFixed(2)}
+              y2={t.p2.y.toFixed(2)}
+            />
+          ))}
+          {labels.map((l) => (
+            <text class="tick-label" x={l.x.toFixed(2)} y={l.y.toFixed(2)}>
+              {l.c > 0 ? `+${l.c}` : l.c}
+            </text>
+          ))}
+          <g class="needle" id="needle" style={`transform-origin: ${CX}px ${CY}px`}>
+            <line x1={CX} y1={CY} x2={CX} y2={CY - R + 6} />
+          </g>
+          <circle class="hub" cx={CX} cy={CY} r="7" />
+        </svg>
+
+        <div class="readout">
+          <span id="cents">0 ¢</span>
+          <span id="freq">– Hz</span>
+        </div>
+        <div class="level" aria-hidden="true"><div id="level"></div></div>
+      </section>
+
+      <section class="strings">
+        <div class="mode-row">
+          <button class="mode" id="mode" type="button" aria-pressed="true">Auto</button>
+          <span class="hint" id="hint">Detecta la cuerda sola · toca una para fijarla</span>
+        </div>
+        <div class="string-grid">
+          {strings.map((s) => (
+            <div class="string" data-note={s.note}>
+              <button class="pick" type="button" data-select={s.note} aria-pressed="false">
+                <span class="pick-label">{s.label}</span>
+                <span class="pick-num">{s.number}ª</span>
+              </button>
+              <button class="play" type="button" data-play={s.note} aria-label={`Escuchar ${s.note}`}>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path class="icon-play" d="M8 5v14l11-7z" />
+                  <rect class="icon-stop" x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <div class="overlay" id="overlay">
+        <div class="overlay-card">
+          <svg class="overlay-icon" viewBox="0 0 64 64" aria-hidden="true">
+            <path d="M32 6c-6 0-10 4-10 10v4c-5 2-8 7-8 13 0 12 8 25 18 25s18-13 18-25c0-6-3-11-8-13v-4C42 10 38 6 32 6z" />
+            <circle cx="32" cy="36" r="6" />
+          </svg>
+          <h2>Afina tu guitarra</h2>
+          <p id="overlay-text">La app necesita el micrófono para escuchar las cuerdas.</p>
+          <button class="start" id="start" type="button">Empezar a afinar</button>
+          <p class="error" id="error" hidden></p>
+        </div>
+      </div>
+    </main>
+
+    <script>
+      import '../scripts/app.ts';
+    </script>
+  </body>
+</html>
+
+<style is:global>
+  :root {
+    color-scheme: dark;
+    --bg: #0f1115;
+    --surface: #181b22;
+    --surface-2: #222631;
+    --line: #2d3240;
+    --text: #eef0f4;
+    --muted: #8b92a3;
+    --ok: #34d399;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --accent: #60a5fa;
+    --state: var(--muted);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    margin: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+    border: 0;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  .app {
+    min-height: 100dvh;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .app[data-tone='ok'] {
+    --state: var(--ok);
+  }
+  .app[data-tone='warn'] {
+    --state: var(--warn);
+  }
+  .app[data-tone='bad'] {
+    --state: var(--bad);
+  }
+
+  .top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  .top h1 {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+  }
+  .tuning {
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+
+  /* Pantalla principal */
+  .display {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 24px;
+    padding: 20px 16px 16px;
+    transition: box-shadow 0.3s;
+  }
+  .app[data-tone='ok'] .display {
+    box-shadow: 0 0 0 2px var(--ok), 0 0 40px -8px var(--ok);
+  }
+
+  .note-wrap {
+    line-height: 1;
+    display: flex;
+    align-items: flex-end;
+  }
+  .note {
+    font-size: clamp(5rem, 28vw, 8rem);
+    font-weight: 700;
+    color: var(--state);
+    transition: color 0.2s;
+    font-variant-numeric: tabular-nums;
+  }
+  .octave {
+    font-size: 1.6rem;
+    color: var(--muted);
+    margin-left: 4px;
+    margin-bottom: 0.6rem;
+    min-width: 1ch;
+  }
+  .status {
+    margin: 6px 0 4px;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--state);
+    min-height: 1.5em;
+    transition: color 0.2s;
+  }
+
+  .gauge {
+    width: 100%;
+    max-width: 340px;
+    overflow: visible;
+  }
+  .arc-bg {
+    fill: none;
+    stroke: var(--surface-2);
+    stroke-width: 14;
+    stroke-linecap: round;
+  }
+  .arc-ok {
+    fill: none;
+    stroke: var(--ok);
+    stroke-width: 14;
+    opacity: 0.35;
+  }
+  .app[data-tone='ok'] .arc-ok {
+    opacity: 1;
+  }
+  .tick {
+    stroke: var(--muted);
+    stroke-width: 1.5;
+    opacity: 0.6;
+  }
+  .tick.major {
+    stroke-width: 2.5;
+    opacity: 1;
+  }
+  .tick-label {
+    fill: var(--muted);
+    font-size: 11px;
+    text-anchor: middle;
+    dominant-baseline: middle;
+  }
+  .needle {
+    transform: rotate(0deg);
+    transition: transform 0.12s ease-out, opacity 0.3s;
+  }
+  .needle line {
+    stroke: var(--state);
+    stroke-width: 4;
+    stroke-linecap: round;
+    transition: stroke 0.2s;
+  }
+  .app:not([data-signal]) .needle {
+    opacity: 0.25;
+  }
+  .hub {
+    fill: var(--text);
+  }
+
+  .readout {
+    display: flex;
+    gap: 20px;
+    color: var(--muted);
+    font-size: 1rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .readout #cents {
+    color: var(--state);
+    font-weight: 600;
+    min-width: 5ch;
+    text-align: right;
+  }
+  .level {
+    width: 60%;
+    height: 4px;
+    margin-top: 12px;
+    border-radius: 2px;
+    background: var(--surface-2);
+    overflow: hidden;
+  }
+  .level div {
+    height: 100%;
+    width: 0;
+    background: var(--accent);
+    transition: width 0.08s linear;
+  }
+
+  /* Cuerdas */
+  .mode-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .mode {
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+  .mode[aria-pressed='true'] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #0b1220;
+  }
+  .hint {
+    color: var(--muted);
+    font-size: 0.8rem;
+    line-height: 1.3;
+  }
+
+  .string-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+  }
+  .string {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .pick {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 12px 0 8px;
+    border-radius: 14px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .pick-label {
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+  .pick-num {
+    font-size: 0.7rem;
+    color: var(--muted);
+  }
+  .string.detected .pick {
+    border-color: var(--state);
+  }
+  .string.detected .pick-label {
+    color: var(--state);
+  }
+  .pick[aria-pressed='true'] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #0b1220;
+  }
+  .string .pick[aria-pressed='true'] .pick-label,
+  .pick[aria-pressed='true'] .pick-num {
+    color: #0b1220;
+  }
+  .string.detected .pick[aria-pressed='true'] {
+    border-color: var(--state);
+    box-shadow: 0 0 0 2px var(--state);
+  }
+  .play {
+    height: 40px;
+    border-radius: 12px;
+    background: var(--surface-2);
+    display: grid;
+    place-items: center;
+  }
+  .play svg {
+    width: 20px;
+    height: 20px;
+    fill: var(--text);
+  }
+  .play .icon-stop {
+    display: none;
+  }
+  .play.on {
+    background: var(--warn);
+  }
+  .play.on svg {
+    fill: #1a1405;
+  }
+  .play.on .icon-play {
+    display: none;
+  }
+  .play.on .icon-stop {
+    display: block;
+  }
+
+  /* Pantalla de inicio */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgb(15 17 21 / 0.92);
+    backdrop-filter: blur(6px);
+    z-index: 10;
+  }
+  .app:not([data-state='idle']) .overlay {
+    display: none;
+  }
+  .overlay-card {
+    text-align: center;
+    max-width: 340px;
+  }
+  .overlay-icon {
+    width: 64px;
+    height: 64px;
+    fill: var(--accent);
+  }
+  .overlay-icon circle {
+    fill: var(--bg);
+  }
+  .overlay-card h2 {
+    margin: 12px 0 8px;
+    font-size: 1.5rem;
+  }
+  .overlay-card p {
+    color: var(--muted);
+    line-height: 1.45;
+    margin: 0 0 20px;
+  }
+  .start {
+    width: 100%;
+    padding: 16px;
+    border-radius: 16px;
+    background: var(--accent);
+    color: #0b1220;
+    font-size: 1.1rem;
+    font-weight: 700;
+  }
+  .start:disabled {
+    opacity: 0.6;
+  }
+  .overlay-card .error {
+    margin-top: 16px;
+    color: var(--bad);
+  }
+
+  @media (max-height: 640px) {
+    .display {
+      padding: 12px;
+    }
+    .note {
+      font-size: 4.5rem;
+    }
+  }
+</style>
